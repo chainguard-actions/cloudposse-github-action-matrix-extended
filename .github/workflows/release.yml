@@ -1,0 +1,15 @@
+name: Major Release Tagger
+
+permissions:
+  contents: write
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: cloudposse/github-action-major-release-tagger@ad2b41fc978968182b88d938c6f51e662eca7700 # v1

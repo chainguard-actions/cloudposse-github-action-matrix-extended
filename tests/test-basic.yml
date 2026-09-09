@@ -1,0 +1,41 @@
+name: Test basic usage - simple array input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          matrix: '[{"name":"a","env":"dev"},{"name":"b","env":"prod"}]'
+
+      - name: Assert matrix output is non-empty
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          echo "PASS: matrix output is non-empty"
+
+      - name: Assert matrix output contains include key
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          echo "$ACTUAL" | grep -q '"include"' || { echo "FAIL: missing 'include' key in output"; exit 1; }
+          echo "PASS: 'include' key found"
+
+      - name: Assert matrix output contains expected items
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          echo "$ACTUAL" | grep -q '"name"' || { echo "FAIL: missing 'name' in output"; exit 1; }
+          echo "$ACTUAL" | grep -q '"env"' || { echo "FAIL: missing 'env' in output"; exit 1; }
+          echo "PASS: expected fields found"

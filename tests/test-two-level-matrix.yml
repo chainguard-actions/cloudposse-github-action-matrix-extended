@@ -1,0 +1,44 @@
+name: Test two-level matrix with sort-by and group-by
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          matrix: '[{"name":"alpha","env":"dev"},{"name":"beta","env":"prod"},{"name":"gamma","env":"dev"}]'
+          sort-by: .name
+          group-by: .env
+          nested-matrices-count: "2"
+
+      - name: Assert matrix output is non-empty
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          echo "PASS: matrix output is non-empty"
+
+      - name: Assert matrix output contains include key
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          echo "$ACTUAL" | grep -q '"include"' || { echo "FAIL: missing 'include' key in output"; exit 1; }
+          echo "PASS: 'include' key found"
+
+      - name: Assert matrix output contains items with nested structure
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Two-level matrix should have items with "name" and "items" keys
+          echo "$ACTUAL" | grep -q '"items"' || { echo "FAIL: missing 'items' key in two-level matrix output"; exit 1; }
+          echo "PASS: 'items' key found (two-level matrix structure confirmed)"

@@ -1,0 +1,119 @@
+name: Test nested matrices 1 Input Matrix
+
+permissions:
+  contents: read
+
+on:
+#  # Uncomment when test added first time to register workflow and comment it back after workflow would be registered
+#  #
+#  # Added pull_request to register workflow from the PR.
+#  # Read more https://stackoverflow.com/questions/63362126/github-actions-how-to-run-a-workflow-created-on-a-non-master-branch-from-the-wo
+  pull_request: {}
+  workflow_dispatch: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup
+        run: echo "Do setup"
+
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: [setup]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
+
+      - uses: ./
+        id: current
+        with:
+          sort-by: '[.version, .os, .arch] | join("-")'
+          group-by: '.arch'
+          nested-matrices-count: '1'
+          matrix: |
+            {
+              "include": [
+                {
+                  "version": "10",
+                  "os": "ubuntu-latest",
+                  "arch": "amd64"
+                },
+                {
+                  "version": "10",
+                  "os": "ubuntu-latest",
+                  "arch": "arm64"
+                },
+                {
+                  "version": "10",
+                  "os": "windows-latest",
+                  "arch": "amd64"
+                },
+                {
+                  "version": "10",
+                  "os": "windows-latest",
+                  "arch": "arm64"
+                },
+                {
+                  "version": "12",
+                  "os": "ubuntu-latest",
+                  "arch": "amd64"
+                },
+                {
+                  "version": "12",
+                  "os": "ubuntu-latest",
+                  "arch": "arm64"
+                },
+                {
+                  "version": "12",
+                  "os": "windows-latest",
+                  "arch": "amd64"
+                },
+                {
+                  "version": "12",
+                  "os": "windows-latest",
+                  "arch": "arm64"
+                },
+                {
+                  "version": "14",
+                  "os": "ubuntu-latest",
+                  "arch": "amd64"
+                },
+                {
+                  "version": "14",
+                  "os": "ubuntu-latest",
+                  "arch": "arm64"
+                },
+                {
+                  "version": "14",
+                  "os": "windows-latest",
+                  "arch": "amd64"
+                },
+                {
+                  "version": "14",
+                  "os": "windows-latest",
+                  "arch": "arm64"
+                }
+              ]
+            }
+
+    outputs:
+      matrix: "${{ steps.current.outputs.matrix }}"
+
+  assert:
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: nick-fields/assert-action@1e012cc9f1bf73ccc96470b56c8887478c647e8a # v1
+        with:
+          actual: ${{ needs.test.outputs.matrix }}
+          expected: '{"include":[{"version":"10","os":"ubuntu-latest","arch":"amd64"},{"version":"10","os":"ubuntu-latest","arch":"arm64"},{"version":"10","os":"windows-latest","arch":"amd64"},{"version":"10","os":"windows-latest","arch":"arm64"},{"version":"12","os":"ubuntu-latest","arch":"amd64"},{"version":"12","os":"ubuntu-latest","arch":"arm64"},{"version":"12","os":"windows-latest","arch":"amd64"},{"version":"12","os":"windows-latest","arch":"arm64"},{"version":"14","os":"ubuntu-latest","arch":"amd64"},{"version":"14","os":"ubuntu-latest","arch":"arm64"},{"version":"14","os":"windows-latest","arch":"amd64"},{"version":"14","os":"windows-latest","arch":"arm64"}]}'
+
+  teardown:
+    runs-on: ubuntu-latest
+    needs: [assert]
+    if: ${{ always() }}
+    steps:
+      - name: Tear down
+        run: echo "Do Tear down"
