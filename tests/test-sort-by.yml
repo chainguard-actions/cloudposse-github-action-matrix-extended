@@ -1,0 +1,51 @@
+name: Test sort-by functionality
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          matrix: |
+            [
+              {"name": "gamma", "value": 3},
+              {"name": "alpha", "value": 1},
+              {"name": "beta", "value": 2}
+            ]
+          sort-by: .name
+      - name: Assert output is valid JSON
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          echo "$ACTUAL" | jq . > /dev/null || { echo "FAIL: not valid JSON"; exit 1; }
+          echo "PASS: valid JSON"
+      - name: Assert items are sorted by name
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          FIRST=$(echo "$ACTUAL" | jq -r '.include[0].name')
+          SECOND=$(echo "$ACTUAL" | jq -r '.include[1].name')
+          THIRD=$(echo "$ACTUAL" | jq -r '.include[2].name')
+          echo "first: $FIRST, second: $SECOND, third: $THIRD"
+          if [ "$FIRST" != "alpha" ]; then
+            echo "FAIL: expected first item to be 'alpha', got '$FIRST'"
+            exit 1
+          fi
+          if [ "$SECOND" != "beta" ]; then
+            echo "FAIL: expected second item to be 'beta', got '$SECOND'"
+            exit 1
+          fi
+          if [ "$THIRD" != "gamma" ]; then
+            echo "FAIL: expected third item to be 'gamma', got '$THIRD'"
+            exit 1
+          fi
+          echo "PASS: items are sorted correctly"

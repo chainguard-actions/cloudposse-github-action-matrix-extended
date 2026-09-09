@@ -1,0 +1,60 @@
+name: Test two-level nested matrix
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          matrix: |
+            [
+              {"name": "alpha", "group": "A"},
+              {"name": "beta", "group": "A"},
+              {"name": "gamma", "group": "B"},
+              {"name": "delta", "group": "B"}
+            ]
+          sort-by: .name
+          group-by: .group
+          nested-matrices-count: "2"
+      - name: Assert output is non-empty and valid JSON
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          echo "$ACTUAL" | jq . > /dev/null || { echo "FAIL: not valid JSON"; exit 1; }
+          echo "PASS: valid JSON"
+      - name: Assert two-level matrix structure
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Two-level matrix: include items should have "name" and "items" keys
+          INCLUDE_LEN=$(echo "$ACTUAL" | jq '.include | length')
+          echo "include length: $INCLUDE_LEN"
+          if [ "$INCLUDE_LEN" -lt "1" ]; then
+            echo "FAIL: expected at least 1 group in include, got $INCLUDE_LEN"
+            exit 1
+          fi
+          # Each item should have a "name" and "items" field
+          FIRST_NAME=$(echo "$ACTUAL" | jq -r '.include[0].name')
+          FIRST_ITEMS=$(echo "$ACTUAL" | jq -r '.include[0].items')
+          echo "first name: $FIRST_NAME"
+          echo "first items: $FIRST_ITEMS"
+          if [ -z "$FIRST_NAME" ] || [ "$FIRST_NAME" = "null" ]; then
+            echo "FAIL: first item has no 'name' field"
+            exit 1
+          fi
+          if [ -z "$FIRST_ITEMS" ] || [ "$FIRST_ITEMS" = "null" ]; then
+            echo "FAIL: first item has no 'items' field"
+            exit 1
+          fi
+          # items should be a JSON string containing an "include" key
+          echo "$FIRST_ITEMS" | jq '.include' > /dev/null || { echo "FAIL: items is not valid JSON with include"; exit 1; }
+          echo "PASS: two-level matrix structure is correct"

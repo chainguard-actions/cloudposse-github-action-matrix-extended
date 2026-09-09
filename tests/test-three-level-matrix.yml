@@ -1,0 +1,68 @@
+name: Test three-level nested matrix
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          matrix: |
+            [
+              {"name": "alpha", "group": "A"},
+              {"name": "beta", "group": "A"},
+              {"name": "gamma", "group": "B"},
+              {"name": "delta", "group": "B"},
+              {"name": "epsilon", "group": "C"}
+            ]
+          sort-by: .name
+          group-by: .group
+          nested-matrices-count: "3"
+      - name: Assert output is non-empty and valid JSON
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          echo "$ACTUAL" | jq . > /dev/null || { echo "FAIL: not valid JSON"; exit 1; }
+          echo "PASS: valid JSON"
+      - name: Assert three-level matrix structure
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Three-level matrix: include items should have "name" and "items" keys
+          INCLUDE_LEN=$(echo "$ACTUAL" | jq '.include | length')
+          echo "include length: $INCLUDE_LEN"
+          if [ "$INCLUDE_LEN" -lt "1" ]; then
+            echo "FAIL: expected at least 1 group in include, got $INCLUDE_LEN"
+            exit 1
+          fi
+          # Each item should have a "name" and "items" field
+          FIRST_NAME=$(echo "$ACTUAL" | jq -r '.include[0].name')
+          FIRST_ITEMS=$(echo "$ACTUAL" | jq -r '.include[0].items')
+          echo "first name: $FIRST_NAME"
+          echo "first items: $FIRST_ITEMS"
+          if [ -z "$FIRST_NAME" ] || [ "$FIRST_NAME" = "null" ]; then
+            echo "FAIL: first item has no 'name' field"
+            exit 1
+          fi
+          if [ -z "$FIRST_ITEMS" ] || [ "$FIRST_ITEMS" = "null" ]; then
+            echo "FAIL: first item has no 'items' field"
+            exit 1
+          fi
+          # items should be a JSON string containing an "include" key
+          echo "$FIRST_ITEMS" | jq '.include' > /dev/null || { echo "FAIL: items is not valid JSON with include"; exit 1; }
+          # Three-level: nested items should also have "name" and "items"
+          NESTED_FIRST=$(echo "$FIRST_ITEMS" | jq -r '.include[0].name')
+          echo "nested first name: $NESTED_FIRST"
+          if [ -z "$NESTED_FIRST" ] || [ "$NESTED_FIRST" = "null" ]; then
+            echo "FAIL: nested item has no 'name' field (expected 3-level structure)"
+            exit 1
+          fi
+          echo "PASS: three-level matrix structure is correct"
