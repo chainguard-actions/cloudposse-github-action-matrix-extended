@@ -9,6 +9,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
 | 0.2.0 | [`0.2.0`](https://github.com/chainguard-actions/cloudposse-github-action-matrix-extended/tree/0.2.0) | [`c599eed`](https://github.com/cloudposse/github-action-matrix-extended/commit/c599eed8fa5d0b64440d8dbc7a81700fbd4c7fa5) |
+| v0.2.1 | [`v0.2.1`](https://github.com/chainguard-actions/cloudposse-github-action-matrix-extended/tree/v0.2.1) | [`48a67b2`](https://github.com/cloudposse/github-action-matrix-extended/commit/48a67b273c034f676a1c5438e3889ba07e8ec84a) |
 
 ## Privacy
 
