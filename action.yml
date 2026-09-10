@@ -1,0 +1,88 @@
+name: 'Matrix extended'
+description: Overcome limitations of GitHub Action\u0027s matrixes using a workaround with reusable workflows and nested matrices
+author: hello@cloudposse.com
+branding:
+  icon: 'wind'
+  color: 'white'
+inputs:
+  matrix:
+    required: true
+    description: 'Matrix inputs (JSON array or object which includes property passed as string or file path)'
+  sort-by:
+    required: false
+    description: 'Sort by query'
+    default: 'empty'
+  group-by:
+    required: false
+    description: 'Group by query'
+    default: 'empty'
+  nested-matrices-count:
+    required: false
+    description: 'Number of nested matrices that should be returned as the output (from 1 to 3)'
+    default: "1"
+outputs:
+  matrix:
+    description: A matrix suitable for extending matrix size workaround (see README)
+    value: ${{ steps.matrix.outputs.output }}
+runs:
+  using: "composite"
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    - id: prepare-matrix
+      shell: bash
+      env:
+        RUNNER_TEMP: ${{ runner.temp }}
+        INPUT_MATRIX: ${{ inputs.matrix }}
+      run: |
+        set -euo pipefail
+
+        # `matrix` can be a very large JSON blob. GitHub Actions passes `with:`
+        # inputs to `uses:` steps as OS environment variables, and Linux caps a
+        # single env/argv string at 128 KiB (MAX_ARG_STRLEN), so a large inline
+        # value makes the runner fail to even start the jq action's node
+        # process ("Argument list too long"). Materializing it to a file here
+        # avoids that: the env var is written to a file (no OS argv size limit),
+        # and only a short file path is forwarded to the jq step.
+        matrix_file="${RUNNER_TEMP}/matrix-extended-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$$.json"
+        printf '%s' "$INPUT_MATRIX" > "$matrix_file"
+
+        # `matrix` may already be a file path rather than inline JSON (per the
+        # action's input description); pass it through unchanged in that case.
+        content="$(cat "$matrix_file")"
+        if [[ -f "$content" ]]; then
+          rm -f "$matrix_file"
+          safe=$(printf '%s' "$content" | tr -d '\n\r')
+          echo "file=$safe" >> "$GITHUB_OUTPUT"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "file=$matrix_file" >> "$GITHUB_OUTPUT"
+          echo "generated=true" >> "$GITHUB_OUTPUT"
+        fi
+    - id: matrix
+      uses: cloudposse/github-action-jq@aff18a1f2e845b56fcfe995b01a558836dc2025b # v0.4.1
+      with:
+        compact: true
+        input: ${{ steps.prepare-matrix.outputs.file }}
+        script: "def name: ${{ inputs.sort-by }};\ndef group: ${{ inputs.group-by }};\n\ndef nestedMatricesLevelsAre(v): ${{ inputs.nested-matrices-count }} == v; \n\ndef chunk: .key / 256 | floor;\ndef groupName: [(.value | group), (chunk | if . == 0 then empty else . end)] | join(\" \");\ndef groupRange: [first, last] | map(.value | name) | join(\" - \");\n\ndef toGHAMatrix: {\"include\": . } ;\n\ndef oneLevelMatrix: . ;\n\ndef twoLevelMatrix: \n    group_by(group) |\n    map( to_entries | group_by(chunk) | \n        map({\n            \"name\": first | groupName,\n            \"items\": map(.value) | toGHAMatrix | tostring\n        })\n    ) | flatten;\n\ndef threeLevelMatrix:\n    group_by(group) |\n    map({\n      \"name\": first | group,\n      \"items\": ( to_entries | group_by(chunk) | \n        map({\n          \"name\": groupRange,\n          \"items\": map(.value) | toGHAMatrix | tostring\n        }) | toGHAMatrix | tostring\n      )\n    });\n\ndef groupingStrategy:\n    if nestedMatricesLevelsAre(3) then \n        threeLevelMatrix\n    elif nestedMatricesLevelsAre(2)  then \n        twoLevelMatrix \n    else \n        oneLevelMatrix \n    end; \n\ndef parseInput:\n    if type == \"array\" then . else .include end;\n\nparseInput | sort_by(name) | groupingStrategy | toGHAMatrix\n"
+    - id: cleanup-matrix
+      if: always() && steps.prepare-matrix.outputs.generated == 'true'
+      shell: bash
+      env:
+        MATRIX_FILE: ${{ steps.prepare-matrix.outputs.file }}
+      run: rm -f "$MATRIX_FILE"

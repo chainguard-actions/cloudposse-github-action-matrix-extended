@@ -1,0 +1,92 @@
+name: Test three-level nested matrix
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          matrix: |
+            [
+              {"name": "alpha", "env": "dev"},
+              {"name": "beta", "env": "dev"},
+              {"name": "gamma", "env": "prod"},
+              {"name": "delta", "env": "prod"},
+              {"name": "epsilon", "env": "staging"}
+            ]
+          sort-by: .name
+          group-by: .env
+          nested-matrices-count: "3"
+      - name: Assert matrix output is valid JSON with include
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          if ! echo "$ACTUAL" | jq . > /dev/null 2>&1; then
+            echo "FAIL: matrix output is not valid JSON"
+            exit 1
+          fi
+          if ! echo "$ACTUAL" | jq -e '.include' > /dev/null 2>&1; then
+            echo "FAIL: matrix output does not contain 'include' key"
+            exit 1
+          fi
+          echo "PASS: matrix output is valid JSON with include"
+      - name: Assert three-level matrix items have name and items fields
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          # In three-level matrix, each include item should have 'name' and 'items' fields
+          FIRST_NAME=$(echo "$ACTUAL" | jq -r '.include[0].name')
+          FIRST_ITEMS=$(echo "$ACTUAL" | jq -r '.include[0].items')
+          echo "first name: $FIRST_NAME"
+          echo "first items: $FIRST_ITEMS"
+          if [ -z "$FIRST_NAME" ] || [ "$FIRST_NAME" = "null" ]; then
+            echo "FAIL: first include item has no 'name' field"
+            exit 1
+          fi
+          if [ -z "$FIRST_ITEMS" ] || [ "$FIRST_ITEMS" = "null" ]; then
+            echo "FAIL: first include item has no 'items' field"
+            exit 1
+          fi
+          # items should be a JSON string containing an include array
+          if ! echo "$FIRST_ITEMS" | jq -e '.include' > /dev/null 2>&1; then
+            echo "FAIL: 'items' field is not a JSON object with 'include'"
+            exit 1
+          fi
+          echo "PASS: three-level matrix items have name and items fields"
+      - name: Assert three-level matrix has 3 groups (dev, prod, staging)
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          COUNT=$(echo "$ACTUAL" | jq '.include | length')
+          echo "group count: $COUNT"
+          if [ "$COUNT" != "3" ]; then
+            echo "FAIL: expected 3 groups (dev, prod, staging), got $COUNT"
+            exit 1
+          fi
+          echo "PASS: three-level matrix has 3 groups"
+      - name: Assert three-level matrix nested items are JSON strings with include
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Each item's 'items' field should be a JSON string that itself contains an include array
+          # with sub-items that also have 'name' and 'items' fields (three levels deep)
+          FIRST_ITEMS=$(echo "$ACTUAL" | jq -r '.include[0].items')
+          echo "first items: $FIRST_ITEMS"
+          NESTED_COUNT=$(echo "$FIRST_ITEMS" | jq '.include | length')
+          echo "nested count: $NESTED_COUNT"
+          if [ -z "$NESTED_COUNT" ] || [ "$NESTED_COUNT" = "null" ] || [ "$NESTED_COUNT" -lt 1 ]; then
+            echo "FAIL: nested items count is invalid: $NESTED_COUNT"
+            exit 1
+          fi
+          echo "PASS: three-level matrix nested items are valid"

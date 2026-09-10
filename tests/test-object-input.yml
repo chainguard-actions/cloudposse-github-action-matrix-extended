@@ -1,0 +1,58 @@
+name: Test object input format with include property
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          matrix: |
+            {
+              "include": [
+                {"name": "alpha", "env": "dev"},
+                {"name": "beta", "env": "staging"},
+                {"name": "gamma", "env": "prod"}
+              ]
+            }
+      - name: Assert matrix output is non-empty and valid JSON
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          if ! echo "$ACTUAL" | jq . > /dev/null 2>&1; then
+            echo "FAIL: matrix output is not valid JSON"
+            exit 1
+          fi
+          echo "PASS: matrix output is valid JSON"
+      - name: Assert matrix output contains include key with 3 items
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          COUNT=$(echo "$ACTUAL" | jq '.include | length')
+          echo "include count: $COUNT"
+          if [ "$COUNT" != "3" ]; then
+            echo "FAIL: expected 3 items in include, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: include has 3 items"
+      - name: Assert matrix items have expected fields
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          # Check that items have 'name' and 'env' fields
+          NAMES=$(echo "$ACTUAL" | jq -r '[.include[].name] | sort | join(",")')
+          echo "names: $NAMES"
+          if [ "$NAMES" != "alpha,beta,gamma" ]; then
+            echo "FAIL: expected names 'alpha,beta,gamma', got '$NAMES'"
+            exit 1
+          fi
+          echo "PASS: matrix items have expected fields"

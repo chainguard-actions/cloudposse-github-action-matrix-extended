@@ -1,0 +1,59 @@
+name: Test basic usage - simple array input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          matrix: |
+            [
+              {"name": "alpha", "env": "dev"},
+              {"name": "beta", "env": "staging"},
+              {"name": "gamma", "env": "prod"}
+            ]
+      - name: Assert matrix output is non-empty
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: matrix output is empty"
+            exit 1
+          fi
+          echo "PASS: matrix output is non-empty"
+      - name: Assert matrix output contains include key
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if ! echo "$ACTUAL" | grep -q '"include"'; then
+            echo "FAIL: matrix output does not contain 'include' key"
+            exit 1
+          fi
+          echo "PASS: matrix output contains 'include' key"
+      - name: Assert matrix output is valid JSON
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          if ! echo "$ACTUAL" | jq . > /dev/null 2>&1; then
+            echo "FAIL: matrix output is not valid JSON"
+            exit 1
+          fi
+          echo "PASS: matrix output is valid JSON"
+      - name: Assert matrix include has 3 items
+        env:
+          ACTUAL: ${{ steps.action.outputs.matrix }}
+        run: |
+          echo "actual: $ACTUAL"
+          COUNT=$(echo "$ACTUAL" | jq '.include | length')
+          echo "include count: $COUNT"
+          if [ "$COUNT" != "3" ]; then
+            echo "FAIL: expected 3 items in include, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: include has 3 items"
