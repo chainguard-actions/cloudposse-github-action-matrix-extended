@@ -45,7 +45,7 @@ runs:
           -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - id: matrix
-      uses: cloudposse/github-action-jq@aff18a1f2e845b56fcfe995b01a558836dc2025b # v0
+      uses: chainguard-actions/cloudposse-github-action-jq@eed9de031bbd9662a31a7ad23496c6dffa4c43d3 # v0
       with:
         compact: true
         input: ${{ inputs.matrix }}
