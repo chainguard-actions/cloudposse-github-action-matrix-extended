@@ -10,50 +10,43 @@
 
 **Harden Agent Version:** `2`
 
-Action **cloudposse--github-action-matrix-extended/v0.2.1** was hardened automatically. 5 finding(s) were identified and resolved across 2 iteration(s).
+Action **cloudposse--github-action-matrix-extended/v0.2.1** was hardened automatically. 4 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### script-injection (severity: high)
 
-Sub-rule (a): In the `prepare-matrix` step, `${{ inputs.matrix }}` is directly interpolated into the `run:` shell script. Although it appears inside a single-quoted heredoc delimiter (`<<'MATRIX_EXTENDED_INPUT_EOF'`), GitHub Actions template substitution occurs before the shell ever sees the script, so the raw value of `inputs.matrix` is injected into the script text. An attacker-controlled matrix value containing shell metacharacters or newlines can break out of the heredoc and execute arbitrary commands.
+Two `run:` blocks in action.yml directly interpolate `${{ }}` expressions into shell commands, violating rule (a).
+
+1. Line 46 (step `prepare-matrix`): `${{ inputs.matrix }}` is interpolated directly inside a heredoc within a `run:` block. Although the heredoc delimiter is quoted (`'MATRIX_EXTENDED_INPUT_EOF'`), the GitHub Actions template substitution of `${{ inputs.matrix }}` occurs before the shell executes, so attacker-controlled content is written verbatim into the running script — enabling shell metacharacter injection.
+
+2. Line 108 (step `cleanup-matrix`): `${{ steps.prepare-matrix.outputs.file }}` is interpolated directly inside a `run:` shell command (`rm -f "${{ steps.prepare-matrix.outputs.file }}"`). A step output derived from attacker-controlled input is injected into the shell command string without quoting or sanitization.
 
 Locations:
 
-- `action.yml:47`
+- `action.yml:46`
+- `action.yml:108`
 
-### script-injection (severity: high)
+### github-env-injection (severity: high)
 
-Sub-rule (a): In the `cleanup-matrix` step, `${{ steps.prepare-matrix.outputs.file }}` is directly interpolated into the `run:` shell command `rm -f "${{ steps.prepare-matrix.outputs.file }}". The step output value is substituted into the shell command string by the Actions runner before the shell executes it, allowing a crafted output value to inject arbitrary shell commands.
+The `prepare-matrix` run block (step id: `prepare-matrix`) writes values derived from untrusted inputs to `$GITHUB_OUTPUT` without the required sanitization step (`printf '%s' ... | tr -d '\n\r'`).
+
+1. Line 51: `echo "file=$content" >> "$GITHUB_OUTPUT"` — `$content` is read from a temp file whose contents were written from `${{ inputs.matrix }}` (attacker-controlled). A newline-containing value can inject additional key=value pairs into `$GITHUB_OUTPUT`.
+
+2. Line 54: `echo "file=$matrix_file" >> "$GITHUB_OUTPUT"` — `$matrix_file` is constructed using `${RUNNER_TEMP}` (set via `env:` from `${{ runner.temp }}`). Although `runner.temp` is typically safe, it is a workflow-context value written to `$GITHUB_OUTPUT` without sanitization, violating the check's requirement for sanitization before every write when the source is not a literal computed in the same block.
 
 Locations:
 
-- `action.yml:96`
+- `action.yml:51`
+- `action.yml:54`
 
 ### unpinned-uses (severity: high)
 
-The following `uses:` references are pinned to mutable tags or branch names rather than immutable 40-character commit SHAs, making them vulnerable to supply-chain attacks:
-- `action.yml`: `cloudposse/github-action-jq@v0` (tag `v0`)
-- `.github/workflows/branch.yml`: `cloudposse/.github/.github/workflows/shared-github-action.yml@main` (branch `main`)
-- `.github/workflows/release.yml`: `cloudposse/.github/.github/workflows/shared-release-branches.yml@main` (branch `main`)
+The composite action step `matrix` references `cloudposse/github-action-jq@v0` using a mutable version tag (`@v0`) instead of a pinned 40-character commit SHA. A mutable tag can be silently updated to point to a different (potentially malicious) commit, enabling a supply-chain attack. It should be pinned to a full SHA, e.g. `cloudposse/github-action-jq@<40-char-sha> # v0`.
 
 Locations:
 
-- `action.yml:55`
-- `.github/workflows/branch.yml:23`
-- `.github/workflows/release.yml:12`
-
-### missing-permissions (severity: medium)
-
-These workflow files have no top-level `permissions:` key and no job-level `permissions:` blocks on any job. Without explicit permissions, workflows inherit the default repository token permissions (which may be `write-all` depending on repository settings), violating the principle of least privilege.
-
-Locations:
-
-- `.github/workflows/test-negative.yml:1`
-- `.github/workflows/test-nestried-matrices-1.yml:1`
-- `.github/workflows/test-nestried-matrices-2.yml:1`
-- `.github/workflows/test-nestried-matrices-3.yml:1`
-- `.github/workflows/test-nestried-matrices-1-input-matrix.yml:1`
+- `action.yml:57`
 
 ### static-inline-injection (severity: high)
 
@@ -67,23 +60,13 @@ Locations:
 
 ### Iteration 1
 
-**Fixes applied:** script-injection, static-inline-injection, unpinned-uses, missing-permissions
+**Fixes applied:** script-injection, github-env-injection, unpinned-uses, static-inline-injection
 
 **Notes:**
 
-Fixed all 5 findings:
-1. script-injection (prepare-matrix step): Moved `${{ inputs.matrix }}` from the heredoc in the run: block to the env: block as INPUT_MATRIX, then used `printf '%s' "$INPUT_MATRIX" > "$matrix_file"` to write it safely.
-2. script-injection (cleanup-matrix step): Moved `${{ steps.prepare-matrix.outputs.file }}` from the rm command to the env: block as MATRIX_FILE, referenced as `"$MATRIX_FILE"`.
-3. Pinned cloudposse/github-action-jq@v0 → @aff18a1f2e845b56fcfe995b01a558836dc2025b # v0 in action.yml.
-4. Pinned cloudposse/.github shared-github-action.yml@main → @4e05ff6c113efa9322288cedbc7c8950c22616cc # main in branch.yml.
-5. Pinned cloudposse/.github shared-release-branches.yml@main → @4e05ff6c113efa9322288cedbc7c8950c22616cc # main in release.yml.
-6. Added `permissions: {}` to all 5 test workflow files that lacked permissions blocks.
-
-### Iteration 2
-
-**Fixes applied:** github-env-injection
-
-**Notes:**
-
-Fixed the github-env-injection finding in action.yml at line 54. In the prepare-matrix step's if-branch (when inputs.matrix is a file path), the $content variable was written directly to $GITHUB_OUTPUT without newline sanitization. Added `safe_content="$(printf '%s' "$content" | tr -d '\n\r')"` and changed the echo to use `$safe_content` instead of `$content`. This prevents an attacker from injecting additional key=value pairs into $GITHUB_OUTPUT by embedding newlines in the inputs.matrix value. The else-branch ($matrix_file) was already safe as it's constructed from controlled values only.
+Fixed all four findings in action.yml:
+1. script-injection (lines 46/47): Moved `${{ inputs.matrix }}` from a heredoc in the run block to an env var `MATRIX_INPUT`, and rewrote the file-writing to use `printf '%s' "$MATRIX_INPUT" > "$matrix_file"` — no template expression in the shell script.
+2. script-injection (line 108): Moved `${{ steps.prepare-matrix.outputs.file }}` from the `rm -f` command to an env var `MATRIX_FILE` in the cleanup-matrix step's `env:` block.
+3. github-env-injection (lines 51/54): Added sanitization with `printf '%s' ... | tr -d '\n\r'` before writing both `$content` and `$matrix_file` to `$GITHUB_OUTPUT`.
+4. unpinned-uses (line 57): Pinned `cloudposse/github-action-jq@v0` to full commit SHA `aff18a1f2e845b56fcfe995b01a558836dc2025b` with `# v0` comment.
 
